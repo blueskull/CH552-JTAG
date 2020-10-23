@@ -30,10 +30,6 @@ def jtag_read():
 jtag_inst(0x11)
 print("Device ID is: "+jtag_read())
 
-# Read status
-# jtag_inst(0x41)
-# print("Device status is: "+jtag_read())
-
 # Clear SRAM
 jtag_inst(0x15)
 jtag_inst(0x05)
@@ -41,8 +37,6 @@ jtag_inst(0x02)
 time.sleep(0.01)
 jtag_inst(0x3a)
 jtag_inst(0x02)
-
-print("FPGA cleared.")
 
 # Write SRAM
 jtag_inst(0x15)
@@ -52,17 +46,18 @@ dev.write(0x01, [0x00, 0x06]) # Enter SPI mode
 with open(sys.argv[1], "rb") as f:
     while True:
         dat=[0]*62 # 62 bytes at a time
+        cnt=0
         for i in range(62):
             ba=f.read(1)
             if not ba:
                 break
+            cnt=cnt+1
             dat[i]=ba[0]
-        i=i+1;
-        dev.write(0x01, [0x02, 0x00]+dat[0:i]) # No NCS toggling
-        if i!=62:
+        dev.write(0x01, [0x02, 0x00]+dat[0:cnt]) # No NCS toggling
+        if cnt!=62:
             break
 dev.write(0x01, [0x00, 0x02]) # Exit SPI mode
-dev.write(0x01, [0x01, 2, 0, 0, 0x80, 0x01, 0x00, 0x00]) # Idle
+dev.write(0x01, [0x01, 1, 0, 0, 0x03, 0x00]) # Idle
 jtag_inst(0x3a)
 jtag_inst(0x02)
 

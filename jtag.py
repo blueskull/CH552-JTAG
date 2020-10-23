@@ -30,10 +30,6 @@ def jtag_read():
 jtag_inst(0x11)
 print("Device ID is: "+jtag_read())
 
-# Read status
-# jtag_inst(0x41)
-# print("Device status is: "+jtag_read())
-
 # Clear SRAM
 jtag_inst(0x15)
 jtag_inst(0x05)
@@ -42,8 +38,6 @@ time.sleep(0.01)
 jtag_inst(0x3a)
 jtag_inst(0x02)
 
-print("FPGA cleared.")
-
 # Write SRAM
 jtag_inst(0x15)
 jtag_inst(0x17)
@@ -51,10 +45,12 @@ dev.write(0x01, [0x01, 1, 0, 0, 0x20, 0x00]) # Shift DR
 with open(sys.argv[1], "rb") as f:
     while True:
         dat=[0]*30 # 62 bytes at a time
+        cnt=0
         for i in range(30):
             ba=f.read(1)
             if not ba:
                 break
+            cnt=cnt+1
             d=0
             b=ba[0]
             for j in range(8): # Bit order reversing
@@ -62,12 +58,10 @@ with open(sys.argv[1], "rb") as f:
                 d|=b&1
                 b>>=1
             dat[i]=d
-        i=i+1;
-        #dev.write(0x01, [0x02, 0x00]+dat) # No NCS toggling
-        dev.write(0x01, [0x01, i, 0, 0]+[0x00]*i+dat)
-        if i!=30:
+        dev.write(0x01, [0x01, cnt, 0, 0]+[0x00]*cnt+dat[0:cnt])
+        if cnt!=30:
             break
-dev.write(0x01, [0x01, 2, 0, 0, 0x80, 0x01, 0x00, 0x00]) # Idle
+dev.write(0x01, [0x01, 1, 0, 0, 0x03, 0x00]) # Idle
 jtag_inst(0x3a)
 jtag_inst(0x02)
 

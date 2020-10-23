@@ -10,5 +10,4 @@ if dev is None:
 dev.set_configuration()
 
 dev.write(0x01, [0x00, 0x04]) # Enter UART mode
-dev.write(0x01, struct.pack("b5s", 0x02, b"Hello"))
-dev.write(0x01, [0x05]);
+dev.write(0x01, struct.pack("bb5s", 0x02, 0x01, b"Hello"))

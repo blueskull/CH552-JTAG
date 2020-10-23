@@ -33,7 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 void jtag_power(uint8_t flags);
 void jtag_write(uint8_t *tms, uint8_t *tdo, uint8_t *tdi, uint8_t N, uint8_t n);
-void spi_write(uint8_t *s, int len);
+uint8_t spi_write(uint8_t *s, uint8_t len, uint8_t cs);
 
 //Delay n microseconds
 void udelay(uint8_t n)
@@ -196,7 +196,11 @@ static inline void ep1_out(void)
 			UEP1_CTRL&=~0x02;
 		}
 	else if(cmd==0x02 && (status&0x04)) //SPI write
-		spi_write(&buf_ep1[1], len-1);
+	{
+		buf_ep1[64]=spi_write(&buf_ep1[2], len-2, val1);
+		UEP1_T_LEN=1;
+		UEP1_CTRL&=~0x02;
+	}
 	else if(cmd==0xff) //Enter ISP mode
 	{
 		EA=0;

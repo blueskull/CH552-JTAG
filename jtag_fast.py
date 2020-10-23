@@ -48,25 +48,20 @@ print("FPGA cleared.")
 jtag_inst(0x15)
 jtag_inst(0x17)
 dev.write(0x01, [0x01, 1, 0, 0, 0x20, 0x00]) # Shift DR
+dev.write(0x01, [0x00, 0x06]) # Enter SPI mode
 with open(sys.argv[1], "rb") as f:
     while True:
-        dat=[0]*30 # 62 bytes at a time
-        for i in range(30):
+        dat=[0]*62 # 62 bytes at a time
+        for i in range(62):
             ba=f.read(1)
             if not ba:
                 break
-            d=0
-            b=ba[0]
-            for j in range(8): # Bit order reversing
-                d<<=1
-                d|=b&1
-                b>>=1
-            dat[i]=d
+            dat[i]=ba[0]
         i=i+1;
-        #dev.write(0x01, [0x02, 0x00]+dat) # No NCS toggling
-        dev.write(0x01, [0x01, i, 0, 0]+[0x00]*i+dat)
-        if i!=30:
+        dev.write(0x01, [0x02, 0x00]+dat[0:i]) # No NCS toggling
+        if i!=62:
             break
+dev.write(0x01, [0x00, 0x02]) # Exit SPI mode
 dev.write(0x01, [0x01, 2, 0, 0, 0x80, 0x01, 0x00, 0x00]) # Idle
 jtag_inst(0x3a)
 jtag_inst(0x02)

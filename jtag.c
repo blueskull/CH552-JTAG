@@ -70,7 +70,7 @@ void jtag_power(uint8_t flags)
 	status=flags;
 }
 
-//Send n JTAG pulses
+//Send n JTAG pulses and read response
 inline uint8_t jtag_pulse(uint8_t tms, uint8_t tdo, uint8_t n)
 {
 	uint8_t ret=0;
@@ -98,17 +98,17 @@ void jtag_write(uint8_t *tms, uint8_t *tdo, uint8_t *tdi, uint8_t N, uint8_t n)
 }
 
 //SPI write array and read last response
-uint8_t spi_write(uint8_t *s, uint8_t len)
+uint8_t spi_write(uint8_t *s, uint8_t len, uint8_t cs)
 {
 	uint8_t i;
 	uint8_t r=0;
-	NCS=0;
+	if(cs) NCS=0;
 	for(i=0;i<len;i++)
 	{
 		SPI0_DATA=s[i];
 		while(!S0_FREE);
-		r=SPI0_DATA;
 	}
-	NCS=1;
+	r=SPI0_DATA;
+	if(cs) NCS=1;
 	return r;
 }

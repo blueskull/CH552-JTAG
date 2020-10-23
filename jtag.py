@@ -51,13 +51,13 @@ dev.write(0x01, [0x01, 1, 0, 0, 0x20, 0x00]) # Shift DR
 with open(sys.argv[1], "rb") as f:
     while True:
         dat=[0]*30
-        for i in range(30):
+        for i in range(30): # 30 bytes at a time
             ba=f.read(1)
             if not ba:
                 break
             d=0
             b=ba[0]
-            for j in range(8):
+            for j in range(8): # Reverse bit order
                 d<<=1
                 d|=b&1
                 b>>=1

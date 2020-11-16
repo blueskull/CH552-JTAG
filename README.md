@@ -5,7 +5,9 @@ USB-JTAG Adapter Using CH552
 
 MCU C code licensed under BSD 3-clause.
 
-CLI Python code licensed under BSD 3-clause, created based on Gowin TN653 document.
+Python code usbjtag.py licensed under BSD 3-clause, created based on Gowin TN653 document.
+
+Python code ch55xtool.py licensed under GPLv3, written by MarsTechHAN, linked here: https://github.com/MarsTechHAN/ch552tool.
 
 This project aims to provide a low cost USB to JTAG adapter for various chips, in this case, Gowin FPGAs.
 

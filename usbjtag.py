@@ -24,7 +24,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THE
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys, usb, binascii
+import sys, usb, time, binascii
 
 class GowinJTAG:
     dev=None
@@ -35,7 +35,14 @@ class GowinJTAG:
         if self.dev is None:
             print("Error: device not found")
             sys.exit(-1)
+        self.dev.reset()
         self.dev.set_configuration()
+
+    # Close USB device
+    def __del__(self):
+        try:
+            usb.util.dispose_resources(self.dev)
+        except Exception: pass
 
     # Write JTAG command
     def WriteCmd(self, cmd):
@@ -70,6 +77,7 @@ class GowinJTAG:
 
     # Write SRAM
     def WriteRam(self, filename):
+        flen=0
         self.WriteCmd(0x15) # Enter config mode
         self.WriteCmd(0x17) # Write SRAM
         self.dev.write(0x01, [0x10, 0x20, 0x00]) # Shift DR
@@ -80,9 +88,11 @@ class GowinJTAG:
                     break
                 # SPI mode, MSB first
                 self.dev.write(0x01, [0x20]+list(dat))
+            flen=f.tell()
         self.dev.write(0x01, [0x10, 0x03, 0x00]) # Idle
         self.WriteCmd(0x3a) # Exit config mode
         self.WriteCmd(0x02) # Nop
+        return flen
 
     # Enter ISP mode
     def EnterIsp(self):
@@ -93,7 +103,6 @@ class GowinJTAG:
 # Entry point
 if __name__ == "__main__":
     import argparse
-    import time
     import os
     parser=argparse.ArgumentParser(description="USB JTAG programmer for Gowin FPGAs")
     parser.add_argument("-r", action="store_true", default=False, dest="reset_fpga", help="Reset FPGA")
@@ -106,6 +115,7 @@ if __name__ == "__main__":
     jtag=GowinJTAG()
     if args.isp_mode:
         jtag.EnterIsp()
+        time.sleep(0.5)
         sys.exit(0)
     if args.reset_fpga:
         jtag.ResetPwr()
@@ -122,8 +132,8 @@ if __name__ == "__main__":
             print("Error: cannot open file")
             sys.exit(-1)
         tbegin=time.time()
-        jtag.WriteRam(args.prog_filename)
+        flen=jtag.WriteRam(args.prog_filename)
         tend=time.time()
         if args.verbose_mode:
-            print("Programming done in {0:.2f}s.".format(tend-tbegin))
+            print("Programming done in {0:.2f}s at {1:.2f}kB/s.".format(tend-tbegin, flen/(tend-tbegin)/1000.0))
     sys.exit(0)

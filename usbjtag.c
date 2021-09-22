@@ -1,7 +1,7 @@
 /*
-CH552 USB-JTAG Adapter
+CH552 USB-JTAG Adapter for PicoGate
 
-Copyright (c) 2020, Bo Gao <7zlaser@gmail.com>
+Copyright (c) 2020-2021, Bo Gao <7zlaser@gmail.com>
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -26,245 +26,104 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <compiler.h>
-#include <stdint.h>
-#include "ch552.h"
+#include "usbjtag.h"
 
-//Pin map
-#define TMS P14
-#define TCK P17
-#define TDI P15
-#define TDO P16
-#define ENA P33
-#define RST P32
-#define ISP P10 //Not used, pull down
+// Return a byte to USB
+void usb_ret(uint8_t val)
+{
+	*usb_buf()=val;
+	usb_tx(1);
+}
 
-//Helper macros
-#define jtag_bit(mask) {TMS=tms&mask; TDI=tdi&mask; SAFE_MOD++; TCK=1; TCK=0;}
-#define jtag_bit_read(mask) {TMS=tms&mask; TDI=tdi&mask; SAFE_MOD++; tdo|=TDO?mask:0; TCK=1; TCK=0;}
-#define usb_txdesc(desc) {len=sizeof(desc); len=len>*slen?*slen:len; for(i=0;i<len;i++) buf_ep0[i]=desc[i];}
+// Read control bytes
+uint8_t ctl_read(uint8_t idx)
+{
+	uint8_t val;
+	if(idx==0) usb_ret(pmu_read());
+	else if(idx==1) {rom_read(0x00, &val, 1); usb_ret(val);}
+	else if(idx==2) usb_ret(clk_read());
+	else if(idx==3) {rom_read(0x01, &val, 1); usb_ret(val);}
+	else return 1;
+	return 0;
+}
 
-//USB descriptors
-__code static uint8_t desc_dev[]={0x12, 0x01, 0x10, 0x01, 0xff, 0xff, 0xff, 0x40, 0xa0, 0x20, 0x09, 0x42, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01};
-__code static uint8_t desc_cfg[]={0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0x80, 0xfa, 0x09, 0x04, 0x00, 0x00, 0x02, 0xff, 0xff, 0xff, 0x00, 0x07, 0x05, 0x81, 0x02, 0x40, 0x00, 0x00, 0x07, 0x05, 0x01, 0x02, 0x40, 0x00, 0x00};
-__code static uint8_t desc_lng[]={0x04, 0x03, 0x09, 0x04};
-__code static uint8_t desc_pro[]={0x12, 0x03, 'U', 0, 'S', 0, 'B', 0, '-', 0, 'J', 0, 'T', 0, 'A', 0, 'G', 0};
+// Write control bytes
+uint8_t ctl_write(uint8_t idx, uint8_t val)
+{
+	if(idx==0) pmu_write(val);
+	else if(idx==1) rom_write(0x00, &val, 1);
+	else if(idx==2) clk_write(val);
+	else if(idx==3) rom_write(0x01, &val, 1);
+	else return 1;
+	return 0;
+}
 
-//Endpoint buffers
-__xdata __at (0x0000) uint8_t buf_ep0[64];
-__xdata __at (0x0040) uint8_t buf_ep1[128];
+// USB packet processing
+void usb_parse(uint8_t *buf, uint8_t len)
+{
+	uint8_t *cmd=buf;
+	uint8_t *arg=buf+1;
+	uint8_t *dat=buf+2;
+	static uint8_t err=0;
+	if(len<2) return; // Invalid packet
+	len-=2;
+	if(*cmd==0x00) // JTAG adapter control
+	{
+		// [0x00, 0x00]
+		if(*arg==0x00) {if(len==0) {RST=0; udelay(20); RST=1; udelay(80); err=0;} else err=1;} // Reset FPGA
+		// [0x00, 0x01, index]
+		else if(*arg==0x01) {if(len==1) {err=ctl_read(*dat);} else err=1;} // Read control bytes
+		// [0x00, 0x02, index, value]
+		else if(*arg==0x02) {if(len==2) {err=ctl_write(*dat, *(dat+1));} else err=1;} // Write control bytes
+		// [0x00, 0x03]
+		else if(*arg==0x03) {if(len==0) {ADC_CTRL|=0x10; while(ADC_CTRL&0x10); usb_ret(ADC_DATA); err=0;} else err=1;} // Read ADC value
+		// [0x00, 0x04, ms, us]
+		else if(*arg==0x04) {if(len==2) {if(*dat) mdelay(*dat); if(*(dat+1)) udelay(*(dat+1)); err=0;} else err=1;} // Delay
+		// [0x00, 0x05]
+		else if(*arg==0x05) {if(len==0) {usb_ret(err); err=0;} else err=1;} // Get error status
+		// [0x00, 0xfd]
+		else if(*arg==0xfd) {if(len==0) {rom_read(0x02, usb_buf(), 16); usb_tx(16); err=0;} else err=1;} // Write serial number
+		// [0x00, 0xfe, byte x16]
+		else if(*arg==0xfe) {if(len==16) {rom_write(0x02, dat, 16); err=0;} else err=1;} // Write serial number
+		// [0x00, 0xff]
+		else if(*arg==0xff) {if(len==0) isp_jump(); else err=1;} // Enter ISP mode
+		else err=1;
+	}
+	else if(*cmd==0x01 && len) // JTAG operation, must have a data payload
+	{
+		if(*arg==0x00) {if(!(len&1)) {jtag_write(dat, dat+(len>>1), len>>1); err=0;} else err=1;} // JTAG write
+		else if(*arg==0x01) {if(!(len&1)) {jtag_write_read(dat, dat+(len>>1), usb_buf(), len>>1); usb_tx(len>>1); err=0;} else err=1;} // JTAG write and read
+		else if(*arg==0x02) {spi_write(dat, len, 1); err=0;}
+		else if(*arg==0x03) {spi_write_read(dat, usb_buf(), len, 1); usb_tx(len); err=0;}
+		else err=1;
+	}
+	else if(*cmd==0x02 && len) // SPI operation, must have a data payload
+	{
+		if(*arg==0x00) {spi_write(dat, len, 0); err=0;}
+		else if(*arg==0x01) {spi_write_read(dat, usb_buf(), len, 0); usb_tx(len); err=0;}
+		else err=1;
+	}
+	else err=1;
+}
 
-//Entry point
+// USB interrupt handler
+void usb_isr(void) __interrupt(INT_NO_USB) __using(1)
+{
+	usb_int();
+}
+
+// Entry point
 void main(void)
 {
-	SAFE_MOD=0x55;
-	SAFE_MOD=0xAA;
-	CLOCK_CFG=CLOCK_CFG&~0x07|0x05; //16MHz
-	SAFE_MOD=0x00;
-	P1&=~(0x80|0x20|0x10|0x91); //TCK, TDI, TMS, ISP low
-	P1_DIR_PU&=~(0x40); //TDO IN
-	P1_MOD_OC&=~(0x80|0x40|0x20|0x10|0x01); //TCK, TDI, TMS, ISP PP, TDI IN
-	P3&=~(0x08|0x04); //ENA, RST low
-	P3_MOD_OC&=~(0x08|0x04); //RST, ENA PP
-	IE_USB=0;
-	USB_CTRL=0x00; //Deassert reset
-	UEP4_1_MOD=0xc0; //EP1 IN/OUT
-	UEP0_DMA=(uint16_t)buf_ep0;
-	UEP1_DMA=(uint16_t)buf_ep1;
-	UEP0_CTRL=0x02; //OUT ACK, IN NAK
-	UEP1_CTRL=0x12; //OUT ACK, IN NAK
-	USB_DEV_AD=0x00;
-	UDEV_CTRL=0x08; //Disable USB port
-	USB_CTRL=0x29; //ENA, auto NAK, DMA
-	UDEV_CTRL|=0x01; //Enable USB port
-	USB_INT_FG=0xff; //Clear all
-	USB_INT_EN=0x03; //XFER, RST
-	IE_USB=1;
-	SPI0_CK_SE=0x02; //SCK 8MHz
+	clk_init();
+	pin_init();
+	adc_init();
+	pmu_init();
+	spi_init(2);
+	usb_init();
+	udelay(100);
+	RST=1;
 	EA=1;
-	while(1);
-}
-
-//JTAG write N bytes
-void jtag_write(uint8_t *mbuf, uint8_t *obuf, uint8_t N)
-{
-	uint8_t i, tms, tdi;
-	for(i=0;i<N;i++)
-	{
-		tms=mbuf[i]; //XRAM access is slow
-		tdi=obuf[i];
-		jtag_bit(0x01) jtag_bit(0x02) jtag_bit(0x04) jtag_bit(0x08)
-		jtag_bit(0x10) jtag_bit(0x20) jtag_bit(0x40) jtag_bit(0x80)
-	}
-}
-
-//JTAG write and read N bytes
-void jtag_write_read(uint8_t *mbuf, uint8_t *obuf, uint8_t *ibuf, uint8_t N)
-{
-	uint8_t i, tms, tdi, tdo;
-	for(i=0;i<N;i++)
-	{
-		tms=mbuf[i]; //XRAM access is slow
-		tdi=obuf[i];
-		tdo=0;
-		jtag_bit_read(0x01) jtag_bit_read(0x02) jtag_bit_read(0x04) jtag_bit_read(0x08)
-		jtag_bit_read(0x10) jtag_bit_read(0x20) jtag_bit_read(0x40) jtag_bit_read(0x80)
-		ibuf[i]=tdo;
-	}
-}
-
-//SPI write N bytes
-void spi_write(uint8_t *obuf, uint8_t N, uint8_t csena)
-{
-	uint8_t i;
-	SPI0_CTRL=0x60;
-	if(csena) TMS=0;
-	for(i=0;i<N;i++)
-	{
-		SPI0_DATA=obuf[i];
-		while(!S0_FREE);
-	}
-	if(csena) TMS=1;
-	SPI0_CTRL=0x02;
-}
-
-//SPI write and read N bytes
-void spi_write_read(uint8_t *obuf, uint8_t *ibuf, uint8_t N, uint8_t csena)
-{
-	uint8_t i;
-	SPI0_CTRL=0x60;
-	if(csena) TMS=0;
-	for(i=0;i<N;i++)
-	{
-		SPI0_DATA=obuf[i];
-		while(!S0_FREE);
-		ibuf[i]=SPI0_DATA;
-	}
-	if(csena) TMS=1;
-	SPI0_CTRL=0x02;
-}
-
-//Finished receiving SETUP from EP0
-inline void ep0_setup(uint8_t *scode, uint8_t *slen, uint8_t *config)
-{
-	uint8_t len, i;
-	UEP0_CTRL&=~0x01; //STALL->NAK
-	if(USB_RX_LEN!=8) goto ep0_stall;
-	*slen=buf_ep0[6];
-	if(buf_ep0[7]) *slen=64;
-	len=0;
-	*scode=buf_ep0[1];
-	if((buf_ep0[0]&0x60)==0) //Standard request
-		if(*scode==0x06) //Get descriptor
-		{
-			if(buf_ep0[3]==0x01) usb_txdesc(desc_dev) //Device
-			else if(buf_ep0[3]==0x02) usb_txdesc(desc_cfg) //Config
-			else if(buf_ep0[3]==0x03) //String
-			{
-				if(buf_ep0[2]==0x00) usb_txdesc(desc_lng)
-				else if(buf_ep0[2]==0x01) usb_txdesc(desc_pro)
-				else goto ep0_stall;
-			}
-			else goto ep0_stall;
-		}
-		else if(*scode==0x05) *slen=buf_ep0[2]; //Set address
-		else if(*scode==0x08) {buf_ep0[0]=*config; len=*slen?1:0;} //Get config
-		else if(*scode==0x09) *config=buf_ep0[2]; //Set config
-		else if(*scode==0x0a) {buf_ep0[0]=0x00; len=*slen?1:0;} //Get interface
-		else if(*scode==0x00) //Get status
-		{
-			if(buf_ep0[0]==0x82 && buf_ep0[4]==0x81) buf_ep0[0]=(UEP1_CTRL&0x03)==0x03?1:0;
-			else if(buf_ep0[0]==0x82 && buf_ep0[4]==0x01) buf_ep0[0]=(UEP1_CTRL&0x0c)==0x0c?1:0;
-			else buf_ep0[0]=0;
-			buf_ep0[1]=0;
-			len=*slen>2?2:*slen;
-		}
-		else if(buf_ep0[0]==0x02 && *scode==0x03) //Set feature
-			if(buf_ep0[4]==0x81) UEP1_CTRL|=0x03;
-			else if(buf_ep0[4]==0x01) UEP1_CTRL|=0x0c;
-			else goto ep0_stall;
-		else if(buf_ep0[0]==0x02 && *scode==0x01) //Clear feature
-			if(buf_ep0[4]==0x81) UEP1_CTRL=(UEP1_CTRL&~0x43)|0x02;
-			else if(buf_ep0[4]==0x01) UEP1_CTRL=(UEP1_CTRL&~0x8c);
-			else goto ep0_stall;
-		else goto ep0_stall;
-	else
-	{
-ep0_stall:
-		*slen=*scode=0x00;
-		UEP0_CTRL=0x03; //IN STALL, DATA1
-		return;
-	}
-	UEP0_T_LEN=len; //Max 64 bytes
-	UEP0_CTRL=0xc0; //DATA1
-}
-
-//Finished receiving from EP1
-inline void ep1_out(void)
-{
-	uint8_t len=USB_RX_LEN;
-	uint8_t cmd=buf_ep1[0];
-	if(!U_TOG_OK) return;
-	if(len<1) return;
-	if((cmd&0xf0)==0x00) {RST=cmd&0x01; ENA=cmd&0x02;} //Power control
-	else if((cmd&0xf0)==0x10 && len&1) //JTAG write
-		if(!(cmd&0x01)) jtag_write(&buf_ep1[1], &buf_ep1[1+len>>1], len>>1); //Write only
-		else //Write and read
-		{
-			jtag_write_read(&buf_ep1[1], &buf_ep1[1+len>>1], &buf_ep1[64], len>>1);
-			UEP1_T_LEN=len>>1;
-			UEP1_CTRL&=~0x02;
-		}
-	else if((cmd&0xf0)==0x20) //SPI write
-		if(!(cmd&0x01)) spi_write(&buf_ep1[1], len-1, cmd&0x02); //Write only
-		else //Write and read
-		{
-			spi_write_read(&buf_ep1[1], &buf_ep1[64], len-1, cmd&0x02);
-			UEP1_T_LEN=len-1;
-			UEP1_CTRL&=~0x02;
-		}
-	else if(cmd==0xff) //Enter ISP mode
-	{
-		EA=0;
-		USB_CTRL=0x06; //Reset USB
-		USB_INT_FG=0xff;
-		for(len=0;len<255;len++) //Delay
-			for(cmd=0;cmd<255;cmd++) {SAFE_MOD++; SAFE_MOD++; SAFE_MOD++; SAFE_MOD++;}
-		((void (*)(void))0x3800)(); //Jump to bootloader
-	}
-}
-
-//USB interrupt handler
-void usb_isr(void) __interrupt (INT_NO_USB) __using 1
-{
-	static uint8_t scode=0, slen=0, config=0;
-	uint8_t token;
-	if(UIF_TRANSFER) //Transfer done
-	{
-		token=USB_INT_ST&0x3f;
-		if(token==0x21) //EP1 IN
-			UEP1_CTRL|=0x02; //EP1 IN NAK
-		else if(token==0x01) //EP1 OUT
-			ep1_out();
-		else if(token==0x30) //EP0 SETUP
-			ep0_setup(&scode, &slen, &config);
-		else if(token==0x20) //EP0 IN
-		{
-			if(scode==0x05) USB_DEV_AD=slen;
-			UEP0_T_LEN=0; //Send ZLP
-			UEP0_CTRL=0x02; //IN NAK
-		}
-		else if(token==0x00) //EP0 OUT
-			UEP0_CTRL=0x02; //IN NAK
-		UIF_TRANSFER=0;
-	}
-	else if(UIF_BUS_RST) //Bus reset
-	{
-		UEP0_CTRL=0x02;
-		UEP1_CTRL=0x12;
-		USB_DEV_AD=0x00;
-		scode=slen=config=0;
-		USB_INT_FG=0xff;
-	}
-	else USB_INT_FG=0xff;
+	while(1) // Main USB packet loop
+		usb_rx(usb_parse);
 }

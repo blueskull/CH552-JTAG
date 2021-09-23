@@ -46,8 +46,11 @@ __xdata uint8_t desc_ser[34]={0x22, 0x03}; // To be populated on power up
 
 // Endpoint buffers
 __xdata __at (0x0000) uint8_t buf_ep0[64];
-__xdata __at (0x0040) uint8_t buf_ep1[2][64];
-__xdata __at (0x00c0) uint8_t buf_ep2[64];
+__xdata __at (0x0080) uint8_t buf_ep1[2][64];
+__xdata __at (0x0040) uint8_t buf_ep2[64];
+//__xdata uint8_t* __code buf_ep0=_buf_ep0;
+//__xdata uint8_t* __code buf_ep1[2]={_buf_ep1[0], _buf_ep1[1]};
+//__xdata uint8_t* __code buf_ep2=_buf_ep2;
 uint8_t len_ep1[2];
 uint8_t idx_r_ep1;
 #define buf_ep1_r buf_ep1[idx_r_ep1]
@@ -89,9 +92,10 @@ void ep1_swap(void)
 }
 
 // Get read buffer and call parser
-void usb_rx(void(*parse)(uint8_t *buf, uint8_t len))
+void usb_rx(void(*parse)(uint8_t __xdata *buf, uint8_t len))
 {
-	uint8_t *buf, *len;
+	uint8_t __xdata *buf;
+	uint8_t *len;
 	while(!len_ep1_r);
 	EA=0;
 	buf=buf_ep1_r;
@@ -103,7 +107,7 @@ void usb_rx(void(*parse)(uint8_t *buf, uint8_t len))
 }
 
 // Get EP2 write buffer
-uint8_t *usb_buf(void)
+uint8_t __xdata *usb_buf(void)
 {
 	while(UEP2_T_LEN); // Wait until buffer is transmitted
 	return buf_ep2;
@@ -123,6 +127,7 @@ void usb_init(void)
 	// Populate serial number descriptor
 	rom_read(0x02, desc_ser+2, 16);
 	for(i=16;i>0;) {i--; desc_ser[2+(i<<1)]=desc_ser[2+i]; desc_ser[3+(i<<1)]=0;}
+	for(i=2;i>33;i++) if(desc_ser[i]==0x00 || desc_ser[i]==0xff) {desc_ser[0]=i; break;}
 	// Configure USB module
 	IE_USB=0;
 	USB_CTRL=0x00; // Deassert reset

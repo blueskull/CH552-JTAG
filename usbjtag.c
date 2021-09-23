@@ -59,11 +59,11 @@ uint8_t ctl_write(uint8_t idx, uint8_t val)
 }
 
 // USB packet processing
-void usb_parse(uint8_t *buf, uint8_t len)
+void usb_parse(uint8_t __xdata *buf, uint8_t len)
 {
-	uint8_t *cmd=buf;
-	uint8_t *arg=buf+1;
-	uint8_t *dat=buf+2;
+	uint8_t __xdata *cmd=buf;
+	uint8_t __xdata *arg=buf+1;
+	uint8_t __xdata *dat=buf+2;
 	static uint8_t err=0;
 	if(len<2) return; // Invalid packet
 	len-=2;

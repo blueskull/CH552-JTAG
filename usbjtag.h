@@ -30,21 +30,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include "ch552.h"
 
+#define TEST
+
 // MCU pin map
-//#define TMS P31 // GW1NZ JTAG TMS/CH552 SPI NCS
-//#define TCK P17 // GW1NZ JTAG TCK/CH552 SPI SCK
-//#define TDI P15 // GW1NZ JTAG TDI/CH552 SPI SDO
-//#define TDO P16 // GW1NZ JTAG TDO/CH552 SPI SDI
+#ifndef TEST
+#define TMS P31 // GW1NZ JTAG TMS/CH552 SPI NCS
+#define TCK P17 // GW1NZ JTAG TCK/CH552 SPI SCK
+#define TDI P15 // GW1NZ JTAG TDI/CH552 SPI SDO
+#define TDO P16 // GW1NZ JTAG TDO/CH552 SPI SDI
+#else
+#define TMS P14
+#define TCK P17
+#define TDI P15
+#define TDO P16
+#endif
 #define JEN P11 // GW1NZ JTAGSEL_N
 #define RST P32 // GW1NZ RECONFIG_N
 #define CLK P10 // GW1NZ CLK_IN
 #define SCL P33 // SLG46580 I2C SCL
 #define SDA P30 // SLG46580 I2C SDA
-
-#define TMS P14
-#define TCK P17
-#define TDI P15
-#define TDO P16
 
 // Initialization routine prototypes
 void clk_init(void);
@@ -61,12 +65,12 @@ uint8_t pmu_read(void);
 void pmu_write(uint8_t val);
 uint8_t clk_read(void);
 void clk_write(uint8_t val);
-void spi_write(uint8_t *obuf, uint8_t len, uint8_t jtag);
-void spi_write_read(uint8_t *obuf, uint8_t *ibuf, uint8_t len, uint8_t jtag);
-void jtag_write(uint8_t *mbuf, uint8_t *obuf, uint8_t len);
-void jtag_write_read(uint8_t *mbuf, uint8_t *obuf, uint8_t *ibuf, uint8_t len);
-void usb_rx(void(*parse)(uint8_t *buf, uint8_t len));
-uint8_t *usb_buf(void);
+void spi_write(uint8_t __xdata *obuf, uint8_t len, uint8_t jtag);
+void spi_write_read(uint8_t __xdata *obuf, uint8_t __xdata *ibuf, uint8_t len, uint8_t jtag);
+void jtag_write(uint8_t __xdata *mbuf, uint8_t __xdata *obuf, uint8_t len);
+void jtag_write_read(uint8_t __xdata *mbuf, uint8_t __xdata *obuf, uint8_t __xdata *ibuf, uint8_t len);
+void usb_rx(void(*parse)(uint8_t __xdata *buf, uint8_t len));
+uint8_t __xdata *usb_buf(void);
 void usb_tx(uint8_t len);
 
 // Miscellaneous routine prototypes

@@ -1,5 +1,5 @@
 CFLAGS=-mmcs51 --stack-auto
-LDFLAGS=-mmcs51 --model-small --xram-size 0x0400 --xram-loc 0x0000 --code-size 0x3800
+LDFLAGS=-mmcs51 --xram-size 0x0400 --xram-loc 0x0000 --code-size 0x3800
 
 all:
 	$(foreach f, $(wildcard *.c), sdcc $(CFLAGS) -c $(f);)

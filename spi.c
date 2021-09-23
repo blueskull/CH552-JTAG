@@ -32,6 +32,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define jtag_bit(mask) {TMS=tms&mask; TDI=tdi&mask; SAFE_MOD++; TCK=1; SAFE_MOD++; TCK=0;}
 #define jtag_bit_read(mask) {TMS=tms&mask; TDI=tdi&mask; SAFE_MOD++; tdo|=TDO?mask:0; TCK=1; SAFE_MOD++; TCK=0;}
 
+// Compiler hack, prevent compiler from eliminating it
+uint8_t tmp;
+
 // Initialize SPI
 void spi_init(uint8_t cfg)
 {
@@ -39,89 +42,156 @@ void spi_init(uint8_t cfg)
 }
 
 // SPI write N bytes
-void spi_write(uint8_t *obuf, uint8_t len, uint8_t jtag)
+void spi_write(uint8_t __xdata *obuf, uint8_t len, uint8_t jtag)
 {
-	uint8_t i;
+	if(!len) return;
 	SPI0_CTRL=0x60; // Enable SPI
 	if(!jtag) {JEN=1; TMS=0;}
-	while(len>=8)
+	XBUS_AUX=0x04; // Select DPTR0, enable self increment
+	tmp=obuf[0]; // Preload DPTR0 and first byte
+	while(len>=8) // Send 8 bytes
 	{
-		SPI0_DATA=obuf[0];
+		SPI0_DATA=tmp; // Start SPI transaction
+		__asm__("movx a, @dptr"); // Meanwhile, read next data
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[1];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[2];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[3];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[4];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[5];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[6];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
-		SPI0_DATA=obuf[7];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
 		len-=8;
-		obuf+=8;
 	}
-	for(i=0;i<len;i++)
+	while(len--)
 	{
-		SPI0_DATA=obuf[i];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
 		while(!S0_FREE);
 	}
+	XBUS_AUX=0x00; // Disable DPTR auto increment
 	if(!jtag) TMS=1;
 	SPI0_CTRL=0x02; // Disable SPI
 }
 
 // SPI write and read N bytes
-void spi_write_read(uint8_t *obuf, uint8_t *ibuf, uint8_t len, uint8_t jtag)
+void spi_write_read(uint8_t __xdata *obuf, uint8_t __xdata *ibuf, uint8_t len, uint8_t jtag)
 {
-	uint8_t i;
 	SPI0_CTRL=0x60; // Enable SPI
 	if(!jtag) {JEN=1; TMS=0;}
+	XBUS_AUX=0x01; // Select DPTR1
+	ibuf[0]=SAFE_MOD; // Load obuf to DPTR1
+	XBUS_AUX=0x04; // Select DPTR0, enable auto increment
+	tmp=obuf[0]; // Preload DPTR0 and first byte
 	while(len>=8)
 	{
-		SPI0_DATA=obuf[0];
+		SPI0_DATA=tmp; // Start SPI transaction
+		__asm__("movx a, @dptr"); // Meanwhile, read next data
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[0]=SPI0_DATA;
-		SPI0_DATA=obuf[1];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[1]=SPI0_DATA;
-		SPI0_DATA=obuf[2];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[2]=SPI0_DATA;
-		SPI0_DATA=obuf[3];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[3]=SPI0_DATA;
-		SPI0_DATA=obuf[4];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[4]=SPI0_DATA;
-		SPI0_DATA=obuf[5];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[5]=SPI0_DATA;
-		SPI0_DATA=obuf[6];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[6]=SPI0_DATA;
-		SPI0_DATA=obuf[7];
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[7]=SPI0_DATA;
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
 		len-=8;
-		obuf+=8;
-		ibuf+=8;
 	}
-	for(i=0;i<len;i++)
+	while(len--)
 	{
-		SPI0_DATA=obuf[i];
+		SPI0_DATA=tmp;
+		__asm__("movx a, @dptr");
+		__asm__("mov _tmp, a");
+		XBUS_AUX=0x05; // Select DPTR1
 		while(!S0_FREE);
-		ibuf[i]=SPI0_DATA;
+		__asm__("mov a, _SPI0_DATA");
+		__asm__("movx @dptr, a");
+		XBUS_AUX=0x04; // Select DPTR0
 	}
+	XBUS_AUX=0x00; // Disable DPTR auto increment
 	if(!jtag) TMS=1;
 	SPI0_CTRL=0x02; // Disable SPI
 }
 
 // JTAG write N bytes
-void jtag_write(uint8_t *mbuf, uint8_t *obuf, uint8_t len)
+void jtag_write(uint8_t __xdata *mbuf, uint8_t __xdata *obuf, uint8_t len)
 {
 	uint8_t i, tms, tdi;
 	JEN=0;
@@ -135,7 +205,7 @@ void jtag_write(uint8_t *mbuf, uint8_t *obuf, uint8_t len)
 }
 
 // JTAG write and read N bytes
-void jtag_write_read(uint8_t *mbuf, uint8_t *obuf, uint8_t *ibuf, uint8_t len)
+void jtag_write_read(uint8_t __xdata *mbuf, uint8_t __xdata *obuf, uint8_t __xdata *ibuf, uint8_t len)
 {
 	uint8_t i, tms, tdi, tdo;
 	JEN=0;

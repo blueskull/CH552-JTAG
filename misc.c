@@ -44,7 +44,7 @@ void clk_init(void)
 // Initialize GPIO
 void pin_init(void)
 {
-	/*
+	#ifndef TEST
 	io_mode(P1, 0, 1, 0, 1) // CLK_IN, high, PP
 	io_mode(P1, 1, 1, 0, 1) // JTAGSEL_N, high, PP
 	io_mode(P1, 4, 1, 0, 0) // ADC, input
@@ -55,11 +55,12 @@ void pin_init(void)
 	io_mode(P3, 1, 1, 0, 1) // TMS, high, PP
 	io_mode(P3, 2, 0, 0, 1) // RECONFIG_N, low, PP
 	io_mode(P3, 3, 1, 1, 1) // SCL, high, bi-di
-	*/
+	#else
 	io_mode(P1, 4, 1, 0, 1) // TMS, high, PP
 	io_mode(P1, 5, 0, 0, 1) // TDI, low, PP
 	io_mode(P1, 6, 1, 0, 0) // TDO, input
 	io_mode(P1, 7, 0, 0, 1) // TCK, low, PP
+	#endif
 }
 
 // Initialize ADC

@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "csv": "^5.5.3",
+    "usb": "^1.7.2"
+  },
+  "name": "usbjtag",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "cli": "node cli.js",
+    "dpt": "node dpt.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
